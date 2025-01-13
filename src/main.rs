@@ -123,13 +123,12 @@ fn main() -> Result<()> {
         .collect::<HashMap<_, _>>();
     // TODO(dcheng): Implement a better piece strategy. For now, select up to 5 pieces per file.
     let pieces = path_to_pieces
-        .into_iter()
-        .map(|(path, mut pieces)| {
+        .iter_mut()
+        .flat_map(|(_path, pieces)| {
             let piece_count = std::cmp::min(5, pieces.len());
             pieces.shuffle(&mut rand::thread_rng());
-            Vec::from(&pieces[..piece_count])
+            &pieces[..piece_count]
         })
-        .flatten()
         .collect::<Vec<_>>();
     let mut failed_paths = HashSet::new();
     for piece in &pieces {

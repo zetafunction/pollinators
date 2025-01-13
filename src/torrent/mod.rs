@@ -7,7 +7,7 @@ pub struct Digest([u8; sha1_smol::DIGEST_LENGTH]);
 
 impl Digest {
     pub fn bytes(&self) -> [u8; sha1_smol::DIGEST_LENGTH] {
-        return self.0;
+        self.0
     }
 }
 
@@ -114,9 +114,7 @@ where
             true,
             vec![File {
                 length: raw_info.length.ok_or_else(|| {
-                    serde::de::Error::custom(format!(
-                        "single-file torrent must have length set in info"
-                    ))
+                    serde::de::Error::custom("single-file torrent must have length set in info")
                 })?,
                 path: raw_info.name.clone().into(),
             }],
@@ -126,22 +124,22 @@ where
     let mut remaining = files.iter().map(|f| f.length).sum();
     let mut file_remaining = files
         .first()
-        .ok_or_else(|| serde::de::Error::custom(format!("torrent with empty files in info")))?
+        .ok_or_else(|| serde::de::Error::custom("torrent with empty files in info"))?
         .length;
     let pieces = raw_info
         .hashes
         .into_iter()
         .map(|hash| {
-            if remaining <= 0 {
-                return Err(serde::de::Error::custom(format!(
-                    "expected more file content for pieces"
-                )));
+            if remaining == 0 {
+                return Err(serde::de::Error::custom(
+                    "remaining hashes but all bytes consumed",
+                ));
             }
             let mut piece_remaining = std::cmp::min(remaining, raw_info.piece_length);
             let mut file_slices = vec![];
             while piece_remaining > 0 {
                 let current_file = file_iter.peek().ok_or_else(|| {
-                    serde::de::Error::custom(format!("expected more files for pieces"))
+                    serde::de::Error::custom("remaining hashes but all files consumed")
                 })?;
                 let next = std::cmp::min(file_remaining, piece_remaining);
                 file_slices.push(FileSlice {
@@ -167,6 +165,6 @@ where
         length: raw_info.length,
         name: raw_info.name,
         piece_length: raw_info.piece_length,
-        pieces: pieces,
+        pieces,
     })
 }
