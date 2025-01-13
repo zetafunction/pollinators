@@ -6,17 +6,21 @@ use rand::seq::SliceRandom;
 use sha1_smol::Sha1;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::path::PathBuf;
+use std::os::unix;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 struct Args {
     #[arg(long)]
-    dir: String,
+    source_dir: PathBuf,
+
+    #[arg(long)]
+    target_dir: PathBuf,
 
     torrent: String,
 }
 
-fn enumerate_files_with_sizes(dir: &str) -> HashMap<u64, Vec<PathBuf>> {
+fn enumerate_files_with_sizes(dir: &Path) -> HashMap<u64, Vec<PathBuf>> {
     let mut results = HashMap::<_, Vec<_>>::new();
     for entry in walkdir::WalkDir::new(dir) {
         let Ok(entry) = entry else {
@@ -73,7 +77,7 @@ impl CheckWithFileMapping for torrent::Piece {
 fn main() -> Result<()> {
     let args = Args::parse();
     let torrent: torrent::Torrent = serde_bencode::from_bytes(&std::fs::read(args.torrent)?)?;
-    let entries = enumerate_files_with_sizes(&args.dir);
+    let entries = enumerate_files_with_sizes(&args.source_dir);
     println!("Matching torrent {}", torrent.info.name);
     // By definition, potential candidates must have matching file sizes.
     let candidates = if let Some(files) = torrent.info.files {
@@ -91,7 +95,7 @@ fn main() -> Result<()> {
             })
             .collect::<Result<HashMap<_, _>, _>>()?
     } else {
-        let path = torrent.info.name.into();
+        let path = torrent.info.name.clone().into();
         let length = torrent
             .info
             .length
@@ -133,10 +137,29 @@ fn main() -> Result<()> {
             failed_paths.extend(piece.file_slices.iter().map(|slice| &slice.path));
         }
     }
-    if failed_paths.is_empty() {
-        println!("Found a match!");
-    } else {
-        println!("Failed to match some paths: {failed_paths:?}");
+    if !failed_paths.is_empty() {
+        bail!("failed to match some paths: {failed_paths:?}");
     }
+    if torrent.info.length.is_some() {
+        bail!("cross-seed setup is not yet supported for single-file torrents");
+    }
+    let base_dir: PathBuf = [
+        args.target_dir,
+        url::Url::parse(&torrent.announce)?
+            .host_str()
+            .ok_or_else(|| anyhow!("announce URL {} has no hostname", torrent.announce))?
+            .into(),
+        torrent.info.name.clone().into(),
+    ]
+    .iter()
+    .collect();
+    std::fs::create_dir_all(&base_dir)?;
+    for (source_path, target_path) in &candidates {
+        if let Some(parent) = source_path.parent() {
+            std::fs::create_dir_all(base_dir.join(parent))?;
+        }
+        unix::fs::symlink(target_path, base_dir.join(source_path))?;
+    }
+    // TODO: Automatically add it in paused mode to the torrent client.
     Ok(())
 }
