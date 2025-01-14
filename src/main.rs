@@ -1,3 +1,4 @@
+mod fs;
 mod torrent;
 mod util;
 
@@ -8,7 +9,6 @@ use rand::seq::SliceRandom;
 use sha1_smol::Sha1;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::os::unix;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -18,6 +18,9 @@ struct Args {
 
     #[arg(long)]
     target_dir: PathBuf,
+
+    #[arg(long)]
+    dry_run: bool,
 
     torrent: String,
 }
@@ -156,12 +159,17 @@ fn main() -> Result<()> {
     ]
     .iter()
     .collect();
-    std::fs::create_dir_all(&base_dir)?;
+    let fs = if args.dry_run {
+        fs::get_dry_run_instance()
+    } else {
+        fs::get_default_instance()
+    };
+    fs.create_dir_all(&base_dir)?;
     for (source_path, target_path) in &candidates {
         if let Some(parent) = source_path.parent() {
-            std::fs::create_dir_all(base_dir.join(parent))?;
+            fs.create_dir_all(&base_dir.join(parent))?;
         }
-        unix::fs::symlink(target_path, base_dir.join(source_path))?;
+        fs.symlink(target_path, &base_dir.join(source_path))?;
     }
     // TODO: Automatically add it in paused mode to the torrent client.
     Ok(())
