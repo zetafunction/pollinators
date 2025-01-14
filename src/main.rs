@@ -1,7 +1,9 @@
 mod torrent;
+mod util;
 
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
+use indicatif::ProgressIterator;
 use rand::seq::SliceRandom;
 use sha1_smol::Sha1;
 use std::collections::{HashMap, HashSet};
@@ -22,7 +24,9 @@ struct Args {
 
 fn enumerate_files_with_sizes(dir: &Path) -> HashMap<u64, Vec<PathBuf>> {
     let mut results = HashMap::<_, Vec<_>>::new();
-    for entry in walkdir::WalkDir::new(dir) {
+    let bar = util::new_spinner().with_message(format!("enumerating files in {}", dir.display()));
+    bar.enable_steady_tick(std::time::Duration::from_millis(125));
+    for entry in walkdir::WalkDir::new(dir).into_iter().progress_with(bar) {
         let Ok(entry) = entry else {
             // TODO: error handling?
             continue;
@@ -49,20 +53,19 @@ trait CheckWithFileMapping {
 
 impl CheckWithFileMapping for torrent::Piece {
     fn check(&self, mapping: &HashMap<PathBuf, PathBuf>) -> Result<bool> {
-        println!("Checking {self:?}");
         let mut sha1 = Sha1::new();
         for slice in &self.file_slices {
             let file = File::open(
                 mapping
                     .get(&slice.path)
-                    .ok_or_else(|| anyhow!("no mapping for {:?}", slice.path))?,
+                    .ok_or_else(|| anyhow!("no mapping for {}", slice.path.display()))?,
             )?;
             let mut buffer = vec![0; slice.length.try_into()?];
             let bytes_read = rustix::io::pread(file, &mut buffer, slice.offset)?;
             if bytes_read as u64 != slice.length {
                 bail!(
-                    "pread failed for {:?}: read {} bytes at offset {} instead of {} bytes",
-                    slice.path,
+                    "pread failed for {}: read {} bytes at offset {} instead of {} bytes",
+                    slice.path.display(),
                     bytes_read,
                     slice.offset,
                     slice.length
@@ -77,8 +80,8 @@ impl CheckWithFileMapping for torrent::Piece {
 fn main() -> Result<()> {
     let args = Args::parse();
     let torrent: torrent::Torrent = serde_bencode::from_bytes(&std::fs::read(args.torrent)?)?;
+    println!("parsed torrent {}", torrent.info.name);
     let entries = enumerate_files_with_sizes(&args.source_dir);
-    println!("Matching torrent {}", torrent.info.name);
     // By definition, potential candidates must have matching file sizes.
     let candidates = if let Some(files) = torrent.info.files {
         files
@@ -86,8 +89,8 @@ fn main() -> Result<()> {
             .map(|file| {
                 let Some(entry) = entries.get(&file.length) else {
                     bail!(
-                        "unable to find candidate matches for file {:?} with size {}",
-                        file.path,
+                        "unable to find candidate matches for file {} with size {}",
+                        file.path.display(),
                         file.length
                     );
                 };
@@ -95,15 +98,15 @@ fn main() -> Result<()> {
             })
             .collect::<Result<HashMap<_, _>, _>>()?
     } else {
-        let path = torrent.info.name.clone().into();
+        let path: PathBuf = torrent.info.name.clone().into();
         let length = torrent
             .info
             .length
             .ok_or_else(|| anyhow!("single-file torrent without length set in info"))?;
         let entry = entries.get(&length).ok_or_else(|| {
             anyhow!(
-                "unable to find candidate matches for file {:?} with size {}",
-                path,
+                "unable to find candidate matches for file {} with size {}",
+                path.display(),
                 length
             )
         })?;
@@ -131,7 +134,8 @@ fn main() -> Result<()> {
         })
         .collect::<Vec<_>>();
     let mut failed_paths = HashSet::new();
-    for piece in &pieces {
+    let bar = util::new_bar(pieces.len() as u64).with_message("hashing...");
+    for piece in pieces.iter().progress_with(bar) {
         if !piece.check(&candidates)? {
             failed_paths.extend(piece.file_slices.iter().map(|slice| &slice.path));
         }
