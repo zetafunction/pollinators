@@ -135,7 +135,7 @@ fn main() -> Result<()> {
             pieces.shuffle(&mut rand::thread_rng());
             &pieces[..piece_count]
         })
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
     let mut failed_paths = HashSet::new();
     let bar = util::new_bar(pieces.len() as u64).with_message("hashing...");
     for piece in pieces.iter().progress_with(bar) {
