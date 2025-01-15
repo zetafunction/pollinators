@@ -22,7 +22,7 @@ struct Args {
     #[arg(long)]
     dry_run: bool,
 
-    torrent: String,
+    torrents: Vec<PathBuf>,
 }
 
 fn enumerate_files_with_sizes<P: AsRef<Path>>(dirs: &[P]) -> HashMap<u64, Vec<PathBuf>> {
@@ -84,11 +84,14 @@ impl CheckWithFileMapping for torrent::Piece {
     }
 }
 
-fn main() -> Result<()> {
-    let args = Args::parse();
-    let torrent: torrent::Torrent = serde_bencode::from_bytes(&std::fs::read(args.torrent)?)?;
-    println!("parsed torrent {}", torrent.info.name);
-    let entries = enumerate_files_with_sizes(&args.source_dir);
+fn process_torrent(
+    path: &Path,
+    target_dir: &Path,
+    entries: &HashMap<u64, Vec<PathBuf>>,
+    dry_run: bool,
+) -> Result<()> {
+    let torrent: torrent::Torrent = serde_bencode::from_bytes(&std::fs::read(path)?)?;
+    println!("processing {}", path.display());
     // By definition, potential candidates must have matching file sizes.
     let candidates = torrent
         .info
@@ -163,16 +166,12 @@ fn main() -> Result<()> {
     if torrent.info.files.len() == 1 {
         bail!("cross-seed setup is not yet supported for single-file torrents");
     }
-    let base_dir: PathBuf = [
-        args.target_dir,
+    let base_dir: PathBuf = target_dir.join(
         url::Url::parse(&torrent.announce)?
             .host_str()
-            .ok_or_else(|| anyhow!("announce URL {} has no hostname", torrent.announce))?
-            .into(),
-    ]
-    .iter()
-    .collect();
-    let fs = if args.dry_run {
+            .ok_or_else(|| anyhow!("announce URL {} has no hostname", torrent.announce))?,
+    );
+    let fs = if dry_run {
         fs::get_dry_run_instance()
     } else {
         fs::get_default_instance()
@@ -184,5 +183,16 @@ fn main() -> Result<()> {
         fs.symlink(target_path, &base_dir.join(source_path))?;
     }
     // TODO: Automatically add it in paused mode to the torrent client.
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+    let entries = enumerate_files_with_sizes(&args.source_dir);
+    for torrent in args.torrents {
+        if let Err(err) = process_torrent(&torrent, &args.target_dir, &entries, args.dry_run) {
+            println!("error: {err:?}");
+        }
+    }
     Ok(())
 }
