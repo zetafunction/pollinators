@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 struct Args {
     #[arg(long)]
-    source_dir: PathBuf,
+    source_dir: Vec<PathBuf>,
 
     #[arg(long)]
     target_dir: PathBuf,
@@ -25,28 +25,32 @@ struct Args {
     torrent: String,
 }
 
-fn enumerate_files_with_sizes(dir: &Path) -> HashMap<u64, Vec<PathBuf>> {
+fn enumerate_files_with_sizes<P: AsRef<Path>>(dirs: &[P]) -> HashMap<u64, Vec<PathBuf>> {
     let mut results = HashMap::<_, Vec<_>>::new();
-    let bar = util::new_spinner().with_message(format!("enumerating files in {}", dir.display()));
+    let bar = util::new_spinner();
     bar.enable_steady_tick(std::time::Duration::from_millis(125));
-    for entry in walkdir::WalkDir::new(dir).into_iter().progress_with(bar) {
-        let Ok(entry) = entry else {
-            // TODO: error handling?
-            continue;
-        };
-        // TODO: handle symlinks?
-        if !entry.file_type().is_file() {
-            continue;
+    for dir in dirs {
+        bar.set_message(format!("enumerating {}", dir.as_ref().display()));
+        for entry in walkdir::WalkDir::new(dir) {
+            let Ok(entry) = entry else {
+                // TODO: error handling?
+                continue;
+            };
+            // TODO: handle symlinks?
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let Ok(metadata) = entry.metadata() else {
+                // TODO: error handling?
+                continue;
+            };
+            results
+                .entry(metadata.len())
+                .or_default()
+                .push(entry.into_path());
         }
-        let Ok(metadata) = entry.metadata() else {
-            // TODO: error handling?
-            continue;
-        };
-        results
-            .entry(metadata.len())
-            .or_default()
-            .push(entry.into_path());
     }
+    bar.finish_with_message(format!("enumerated {} files", results.len()));
     results
 }
 
