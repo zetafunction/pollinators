@@ -132,6 +132,30 @@ fn main() -> Result<()> {
     if !failed_paths.is_empty() {
         bail!("failed to match some paths: {failed_paths:?}");
     }
+    // Otherwise, check if symlinks are needed at all.
+    let path_prefix: HashSet<Option<PathBuf>> = candidates
+        .iter()
+        .map(|(source, target)| {
+            let mut source_components = source.components().rev();
+            let mut target_components = target.components().rev();
+            loop {
+                match (source_components.next(), target_components.next()) {
+                    (Some(s), Some(t)) if s == t => continue,
+                    (None, Some(t)) => {
+                        return Some(target_components.rev().chain(Some(t)).collect());
+                    }
+                    _ => return None,
+                }
+            }
+        })
+        .collect();
+    if !path_prefix.contains(&None) && path_prefix.len() == 1 {
+        println!(
+            "Seed directly from {}",
+            path_prefix.into_iter().next().unwrap().unwrap().display()
+        );
+        return Ok(());
+    }
     if torrent.info.files.len() == 1 {
         bail!("cross-seed setup is not yet supported for single-file torrents");
     }
