@@ -1,3 +1,4 @@
+use console::Style;
 use std::path::Path;
 
 pub trait Filesystem {
@@ -24,12 +25,19 @@ struct DryRunFilesystem;
 
 impl Filesystem for DryRunFilesystem {
     fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
-        println!("creating directories at {}", path.display());
+        let cyan = Style::new().cyan();
+        println!("creating directories at {}", cyan.apply_to(path.display()));
         Ok(())
     }
 
     fn symlink(&self, original: &Path, link: &Path) -> std::io::Result<()> {
-        println!("symlinking {} to {}", link.display(), original.display());
+        let cyan = Style::new().cyan();
+        let magenta = Style::new().magenta();
+        println!(
+            "symlinking {} to {}",
+            cyan.apply_to(link.display()),
+            magenta.apply_to(original.display())
+        );
         Ok(())
     }
 }

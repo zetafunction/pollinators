@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
+console = "0.15.10"
 indicatif = "0.17.9"
 rand = "0.8.5"
 rustix = "0.38.43"
