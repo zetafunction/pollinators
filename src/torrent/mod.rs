@@ -41,11 +41,7 @@ pub struct Piece {
 
 #[derive(Debug)]
 pub struct Info {
-    // TODO: This should be an enum.
-    // Only present for multi-file torrents.
-    pub files: Option<Vec<File>>,
-    // Only present for single-file torrents.
-    pub length: Option<u64>,
+    pub files: Vec<File>,
     pub name: String,
     pub piece_length: u64,
     pub pieces: Vec<Piece>,
@@ -64,9 +60,9 @@ where
 {
     #[derive(Deserialize)]
     struct RawInfo {
+        name: String,
         files: Option<Vec<File>>,
         length: Option<u64>,
-        name: String,
         #[serde(rename = "piece length")]
         piece_length: u64,
         #[serde(rename = "pieces", deserialize_with = "deserialize_pieces")]
@@ -107,23 +103,30 @@ where
 
     let raw_info = RawInfo::deserialize(deserializer)?;
 
-    let (is_single_file, files) = if let Some(files) = raw_info.files {
-        (false, files)
-    } else {
-        (
-            true,
-            vec![File {
-                length: raw_info.length.ok_or_else(|| {
-                    serde::de::Error::custom("single-file torrent must have length set in info")
-                })?,
-                path: raw_info.name.clone().into(),
-            }],
-        )
-    };
+    let files = match (raw_info.files, raw_info.length) {
+        (Some(files), None) => {
+            let name_as_path = PathBuf::from(raw_info.name.clone());
+            Ok(files
+                .into_iter()
+                .map(|file| File {
+                    length: file.length,
+                    path: name_as_path.join(file.path),
+                })
+                .collect())
+        }
+        (None, Some(length)) => Ok(vec![File {
+            length,
+            path: raw_info.name.clone().into(),
+        }]),
+        _ => Err(serde::de::Error::custom(
+            "torrent must set exactly one of length or files",
+        )),
+    }?;
+
     let mut file_iter = files.iter().peekable();
     let mut remaining = files.iter().map(|f| f.length).sum();
-    let mut file_remaining = files
-        .first()
+    let mut file_remaining = file_iter
+        .peek()
         .ok_or_else(|| serde::de::Error::custom("torrent with empty files in info"))?
         .length;
     let pieces = raw_info
@@ -161,8 +164,7 @@ where
         .collect::<Result<_, D::Error>>()?;
 
     Ok(Info {
-        files: if is_single_file { None } else { Some(files) },
-        length: raw_info.length,
+        files,
         name: raw_info.name,
         piece_length: raw_info.piece_length,
         pieces,

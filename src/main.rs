@@ -86,35 +86,21 @@ fn main() -> Result<()> {
     println!("parsed torrent {}", torrent.info.name);
     let entries = enumerate_files_with_sizes(&args.source_dir);
     // By definition, potential candidates must have matching file sizes.
-    let candidates = if let Some(files) = torrent.info.files {
-        files
-            .iter()
-            .map(|file| {
-                let Some(entry) = entries.get(&file.length) else {
-                    bail!(
-                        "unable to find candidate matches for file {} with size {}",
-                        file.path.display(),
-                        file.length
-                    );
-                };
-                Ok((file.path.clone(), entry.clone()))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?
-    } else {
-        let path: PathBuf = torrent.info.name.clone().into();
-        let length = torrent
-            .info
-            .length
-            .ok_or_else(|| anyhow!("single-file torrent without length set in info"))?;
-        let entry = entries.get(&length).ok_or_else(|| {
-            anyhow!(
-                "unable to find candidate matches for file {} with size {}",
-                path.display(),
-                length
-            )
-        })?;
-        HashMap::from([(path, entry.clone())])
-    };
+    let candidates = torrent
+        .info
+        .files
+        .iter()
+        .map(|file| {
+            let Some(entry) = entries.get(&file.length) else {
+                bail!(
+                    "unable to find candidate matches for file {} with size {}",
+                    file.path.display(),
+                    file.length
+                );
+            };
+            Ok((file.path.clone(), entry.clone()))
+        })
+        .collect::<Result<HashMap<_, _>, _>>()?;
     let mut path_to_pieces = HashMap::<_, Vec<_>>::new();
     for piece in &torrent.info.pieces {
         for slice in &piece.file_slices {
@@ -146,7 +132,7 @@ fn main() -> Result<()> {
     if !failed_paths.is_empty() {
         bail!("failed to match some paths: {failed_paths:?}");
     }
-    if torrent.info.length.is_some() {
+    if torrent.info.files.len() == 1 {
         bail!("cross-seed setup is not yet supported for single-file torrents");
     }
     let base_dir: PathBuf = [
@@ -155,7 +141,6 @@ fn main() -> Result<()> {
             .host_str()
             .ok_or_else(|| anyhow!("announce URL {} has no hostname", torrent.announce))?
             .into(),
-        torrent.info.name.clone().into(),
     ]
     .iter()
     .collect();
@@ -164,7 +149,6 @@ fn main() -> Result<()> {
     } else {
         fs::get_default_instance()
     };
-    fs.create_dir_all(&base_dir)?;
     for (source_path, target_path) in &candidates {
         if let Some(parent) = source_path.parent() {
             fs.create_dir_all(&base_dir.join(parent))?;
