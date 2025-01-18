@@ -15,14 +15,21 @@ use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 struct Args {
+    /// Where to look for potential matches. May be specified multiple times.
     #[arg(long)]
     source_dir: Vec<PathBuf>,
 
+    /// Where to create the symlinks, if needed.
     #[arg(long)]
     target_dir: PathBuf,
 
+    /// If true, only prints out the changes that would have been made.
     #[arg(long)]
     dry_run: bool,
+
+    /// How many pieces should be tested per file when checking for a match.
+    #[arg(long, default_value_t = 3)]
+    pieces_to_test: usize,
 
     torrents: Vec<PathBuf>,
 }
@@ -90,6 +97,7 @@ fn process_torrent(
     path: &Path,
     target_dir: &Path,
     entries: &HashMap<u64, Vec<PathBuf>>,
+    pieces_to_test: usize,
     dry_run: bool,
 ) -> Result<()> {
     let torrent: torrent::Torrent = serde_bencode::from_bytes(&std::fs::read(path)?)?;
@@ -126,7 +134,7 @@ fn process_torrent(
     let pieces = path_to_pieces
         .iter_mut()
         .flat_map(|(_path, pieces)| {
-            let piece_count = std::cmp::min(5, pieces.len());
+            let piece_count = std::cmp::min(pieces_to_test, pieces.len());
             pieces.shuffle(&mut rand::thread_rng());
             &pieces[..piece_count]
         })
@@ -194,7 +202,13 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let entries = enumerate_files_with_sizes(&args.source_dir);
     for torrent in args.torrents {
-        if let Err(err) = process_torrent(&torrent, &args.target_dir, &entries, args.dry_run) {
+        if let Err(err) = process_torrent(
+            &torrent,
+            &args.target_dir,
+            &entries,
+            args.pieces_to_test,
+            args.dry_run,
+        ) {
             println!("{} {:?}", style("error:").red(), style(err).red());
         }
     }
