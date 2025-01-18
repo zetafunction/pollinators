@@ -1,9 +1,11 @@
+mod client;
 mod fs;
 mod torrent;
 mod util;
 
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
+use console::style;
 use indicatif::ProgressIterator;
 use rand::seq::SliceRandom;
 use sha1_smol::Sha1;
@@ -157,10 +159,8 @@ fn process_torrent(
         })
         .collect();
     if !path_prefix.contains(&None) && path_prefix.len() == 1 {
-        println!(
-            "Seed directly from {}",
-            path_prefix.into_iter().next().unwrap().unwrap().display()
-        );
+        let seed_path = path_prefix.into_iter().next().unwrap().unwrap();
+        client::new_instance(dry_run).add_torrent(path, &seed_path)?;
         return Ok(());
     }
     if torrent.info.files.len() == 1 {
@@ -182,7 +182,7 @@ fn process_torrent(
         }
         fs.symlink(target_path, &base_dir.join(source_path))?;
     }
-    // TODO: Automatically add it in paused mode to the torrent client.
+    client::new_instance(dry_run).add_torrent(path, &base_dir)?;
     Ok(())
 }
 
@@ -191,7 +191,7 @@ fn main() -> Result<()> {
     let entries = enumerate_files_with_sizes(&args.source_dir);
     for torrent in args.torrents {
         if let Err(err) = process_torrent(&torrent, &args.target_dir, &entries, args.dry_run) {
-            println!("error: {err:?}");
+            println!("{} {:?}", style("error:").red(), style(err).red());
         }
     }
     Ok(())
