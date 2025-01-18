@@ -163,7 +163,7 @@ fn process_torrent(
         client::new_instance(dry_run).add_torrent(path, &seed_path)?;
         return Ok(());
     }
-    if torrent.info.files.len() == 1 {
+    if torrent.info.is_single_file {
         bail!("cross-seed setup is not yet supported for single-file torrents");
     }
     let base_dir: PathBuf = target_dir.join(

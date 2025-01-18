@@ -42,6 +42,7 @@ pub struct Piece {
 #[derive(Debug)]
 pub struct Info {
     pub files: Vec<File>,
+    pub is_single_file: bool,
     pub name: String,
     pub piece_length: u64,
     pub pieces: Vec<Piece>,
@@ -103,21 +104,27 @@ where
 
     let raw_info = RawInfo::deserialize(deserializer)?;
 
-    let files = match (raw_info.files, raw_info.length) {
+    let (is_single_file, files) = match (raw_info.files, raw_info.length) {
         (Some(files), None) => {
             let name_as_path = PathBuf::from(raw_info.name.clone());
-            Ok(files
-                .into_iter()
-                .map(|file| File {
-                    length: file.length,
-                    path: name_as_path.join(file.path),
-                })
-                .collect())
+            Ok((
+                false,
+                files
+                    .into_iter()
+                    .map(|file| File {
+                        length: file.length,
+                        path: name_as_path.join(file.path),
+                    })
+                    .collect(),
+            ))
         }
-        (None, Some(length)) => Ok(vec![File {
-            length,
-            path: raw_info.name.clone().into(),
-        }]),
+        (None, Some(length)) => Ok((
+            true,
+            vec![File {
+                length,
+                path: raw_info.name.clone().into(),
+            }],
+        )),
         _ => Err(serde::de::Error::custom(
             "torrent must set exactly one of length or files",
         )),
@@ -165,6 +172,7 @@ where
 
     Ok(Info {
         files,
+        is_single_file,
         name: raw_info.name,
         piece_length: raw_info.piece_length,
         pieces,
