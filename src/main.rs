@@ -171,6 +171,10 @@ fn process_torrent(
             .host_str()
             .ok_or_else(|| anyhow!("announce URL {} has no hostname", torrent.announce))?,
     );
+    println!(
+        "{}",
+        style("found matches with different filenames; creating symlinks").blue()
+    );
     let fs = if dry_run {
         fs::get_dry_run_instance()
     } else {
