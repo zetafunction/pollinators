@@ -130,7 +130,7 @@ fn process_torrent(
         .into_iter()
         .map(|(path, mut candidates)| (path, candidates.pop().unwrap()))
         .collect::<HashMap<_, _>>();
-    // TODO(dcheng): Implement a better piece strategy. For now, select up to 5 pieces per file.
+    // Sample a (configurable) number of pieces to file as a quick correctness check.
     let pieces = path_to_pieces
         .iter_mut()
         .flat_map(|(_path, pieces)| {
@@ -147,9 +147,10 @@ fn process_torrent(
         }
     }
     if !failed_paths.is_empty() {
-        bail!("failed to match some paths: {failed_paths:?}");
+        bail!("hash check failed for paths: {failed_paths:?}");
     }
-    // Otherwise, check if symlinks are needed at all.
+    // Check if symlinks are needed at all. This could be much simpler if Path implemented
+    // strip_suffix, but for whatever reason, Path only implements strip_prefix.
     let path_prefix: HashSet<Option<PathBuf>> = candidates
         .iter()
         .map(|(source, target)| {
