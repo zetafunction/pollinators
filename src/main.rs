@@ -124,11 +124,25 @@ fn process_torrent(
             path_to_pieces.entry(&slice.path).or_default().push(piece);
         }
     }
-    // TODO: Implement an actual strategy. For now, just pick the last file as the candidate
-    // because it's very simple.
+    // TODO: This doesn't prevent duplicate assignments, which is probably not desirable.
     let candidates = candidates
         .into_iter()
-        .map(|(path, mut candidates)| (path, candidates.pop().unwrap()))
+        .map(|(path, candidates)| {
+            let candidate = candidates
+                .iter()
+                .map(|candidate| {
+                    let common_suffix = candidate
+                        .iter()
+                        .rev()
+                        .zip(path.iter().rev())
+                        .take_while(|(x, y)| x == y)
+                        .count();
+                    (common_suffix, candidate)
+                })
+                .max()
+                .unwrap();
+            (path, candidate.1.clone())
+        })
         .collect::<HashMap<_, _>>();
     // Sample a (configurable) number of pieces to file as a quick correctness check.
     let pieces = path_to_pieces
