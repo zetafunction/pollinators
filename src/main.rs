@@ -93,6 +93,87 @@ impl CheckWithFileMapping for torrent::Piece {
     }
 }
 
+trait CrossSeed {
+    fn base_dir(&self, target_dir: &Path) -> Result<PathBuf>;
+    fn cross_seed(
+        &self,
+        dry_run: bool,
+        path: &Path,
+        target_dir: &Path,
+        candidates: &HashMap<&PathBuf, &PathBuf>,
+    ) -> Result<()>;
+}
+
+impl CrossSeed for torrent::Torrent {
+    fn base_dir(&self, target_dir: &Path) -> Result<PathBuf> {
+        Ok(target_dir.join(
+            url::Url::parse(&self.announce)?
+                .host_str()
+                .ok_or_else(|| anyhow!("announce URL {} has no hostname", self.announce))?,
+        ))
+    }
+
+    fn cross_seed(
+        &self,
+        dry_run: bool,
+        path: &Path,
+        target_dir: &Path,
+        candidates: &HashMap<&PathBuf, &PathBuf>,
+    ) -> Result<()> {
+        if self.info.is_single_file {
+            let (source, target) = candidates.iter().next().unwrap();
+            return if *source == target.file_name().unwrap() {
+                client::new_instance(dry_run).add_torrent(path, target.parent().unwrap())
+            } else {
+                let base_dir = self.base_dir(target_dir)?;
+                let fs = fs::new_instance(dry_run);
+                fs.create_dir_all(&base_dir)?;
+                fs.symlink(target, &base_dir.join(source))?;
+                client::new_instance(dry_run).add_torrent(path, &base_dir)
+            };
+        }
+
+        // Check if symlinks are needed at all. This could be much simpler if Path implemented
+        // strip_suffix, but for whatever reason, Path only implements strip_prefix.
+        let path_prefix: HashSet<Option<PathBuf>> = candidates
+            .iter()
+            .map(|(source, target)| {
+                let mut source_components = source.components().rev();
+                let mut target_components = target.components().rev();
+                loop {
+                    match (source_components.next(), target_components.next()) {
+                        (Some(s), Some(t)) if s == t => continue,
+                        (None, Some(t)) => {
+                            return Some(target_components.rev().chain(Some(t)).collect());
+                        }
+                        _ => return None,
+                    }
+                }
+            })
+            .collect();
+        if !path_prefix.contains(&None) && path_prefix.len() == 1 {
+            let seed_path = path_prefix.into_iter().next().unwrap().unwrap();
+            client::new_instance(dry_run).add_torrent(path, &seed_path)?;
+            return Ok(());
+        }
+        let base_dir = self.base_dir(target_dir)?;
+        println!(
+            "{}",
+            style("found matches with different filenames; creating symlinks").blue()
+        );
+        let fs = fs::new_instance(dry_run);
+        for (source_path, target_path) in candidates {
+            if let Some(parent) = source_path.parent() {
+                fs.create_dir_all(&base_dir.join(parent))?;
+            }
+            fs.symlink(target_path, &base_dir.join(source_path))?;
+        }
+        client::new_instance(dry_run).add_torrent(path, &base_dir)?;
+
+        Ok(())
+    }
+}
+
 fn process_torrent(
     path: &Path,
     target_dir: &Path,
@@ -163,54 +244,8 @@ fn process_torrent(
     if !failed_paths.is_empty() {
         bail!("hash check failed for paths: {failed_paths:?}");
     }
-    // Check if symlinks are needed at all. This could be much simpler if Path implemented
-    // strip_suffix, but for whatever reason, Path only implements strip_prefix.
-    let path_prefix: HashSet<Option<PathBuf>> = candidates
-        .iter()
-        .map(|(source, target)| {
-            let mut source_components = source.components().rev();
-            let mut target_components = target.components().rev();
-            loop {
-                match (source_components.next(), target_components.next()) {
-                    (Some(s), Some(t)) if s == t => continue,
-                    (None, Some(t)) => {
-                        return Some(target_components.rev().chain(Some(t)).collect());
-                    }
-                    _ => return None,
-                }
-            }
-        })
-        .collect();
-    if !path_prefix.contains(&None) && path_prefix.len() == 1 {
-        let seed_path = path_prefix.into_iter().next().unwrap().unwrap();
-        client::new_instance(dry_run).add_torrent(path, &seed_path)?;
-        return Ok(());
-    }
-    if torrent.info.is_single_file {
-        bail!("cross-seed setup is not yet supported for single-file torrents");
-    }
-    let base_dir: PathBuf = target_dir.join(
-        url::Url::parse(&torrent.announce)?
-            .host_str()
-            .ok_or_else(|| anyhow!("announce URL {} has no hostname", torrent.announce))?,
-    );
-    println!(
-        "{}",
-        style("found matches with different filenames; creating symlinks").blue()
-    );
-    let fs = if dry_run {
-        fs::get_dry_run_instance()
-    } else {
-        fs::get_default_instance()
-    };
-    for (source_path, target_path) in &candidates {
-        if let Some(parent) = source_path.parent() {
-            fs.create_dir_all(&base_dir.join(parent))?;
-        }
-        fs.symlink(target_path, &base_dir.join(source_path))?;
-    }
-    client::new_instance(dry_run).add_torrent(path, &base_dir)?;
-    Ok(())
+
+    torrent.cross_seed(dry_run, path, target_dir, &candidates)
 }
 
 fn main() -> Result<()> {

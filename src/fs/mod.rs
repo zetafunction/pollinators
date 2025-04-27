@@ -17,7 +17,7 @@ impl Filesystem for PosixFilesystem {
     }
 }
 
-pub fn get_default_instance() -> Box<dyn Filesystem> {
+fn get_default_instance() -> Box<dyn Filesystem> {
     Box::new(PosixFilesystem {})
 }
 
@@ -42,6 +42,14 @@ impl Filesystem for DryRunFilesystem {
     }
 }
 
-pub fn get_dry_run_instance() -> Box<dyn Filesystem> {
+fn get_dry_run_instance() -> Box<dyn Filesystem> {
     Box::new(DryRunFilesystem {})
+}
+
+pub fn new_instance(dry_run: bool) -> Box<dyn Filesystem> {
+    if dry_run {
+        get_dry_run_instance()
+    } else {
+        get_default_instance()
+    }
 }
