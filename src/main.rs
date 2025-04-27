@@ -64,11 +64,11 @@ fn enumerate_files_with_sizes<P: AsRef<Path>>(dirs: &[P]) -> HashMap<u64, Vec<Pa
 }
 
 trait CheckWithFileMapping {
-    fn check(&self, mapping: &HashMap<PathBuf, PathBuf>) -> Result<bool>;
+    fn check(&self, mapping: &HashMap<&PathBuf, &PathBuf>) -> Result<bool>;
 }
 
 impl CheckWithFileMapping for torrent::Piece {
-    fn check(&self, mapping: &HashMap<PathBuf, PathBuf>) -> Result<bool> {
+    fn check(&self, mapping: &HashMap<&PathBuf, &PathBuf>) -> Result<bool> {
         let mut sha1 = Sha1::new();
         for slice in &self.file_slices {
             let file = File::open(
@@ -115,7 +115,7 @@ fn process_torrent(
                     file.length
                 );
             };
-            Ok((file.path.clone(), entry.clone()))
+            Ok((&file.path, entry))
         })
         .collect::<Result<HashMap<_, _>, _>>()?;
     let mut path_to_pieces = HashMap::<_, Vec<_>>::new();
@@ -141,7 +141,7 @@ fn process_torrent(
                 })
                 .max()
                 .unwrap();
-            (path, candidate.1.clone())
+            (path, candidate.1)
         })
         .collect::<HashMap<_, _>>();
     // Sample a (configurable) number of pieces to file as a quick correctness check.
