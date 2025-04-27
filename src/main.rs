@@ -174,6 +174,31 @@ impl CrossSeed for torrent::Torrent {
     }
 }
 
+fn pick_candidates<'a>(
+    candidates: HashMap<&'a PathBuf, &'a Vec<PathBuf>>,
+) -> HashMap<&'a PathBuf, &'a PathBuf> {
+    // TODO: This doesn't prevent duplicate assignments, which is probably not desirable.
+    candidates
+        .into_iter()
+        .map(|(path, candidates)| {
+            let candidate = candidates
+                .iter()
+                .map(|candidate| {
+                    let common_suffix = candidate
+                        .iter()
+                        .rev()
+                        .zip(path.iter().rev())
+                        .take_while(|(x, y)| x == y)
+                        .count();
+                    (common_suffix, candidate)
+                })
+                .max()
+                .unwrap();
+            (path, candidate.1)
+        })
+        .collect()
+}
+
 fn process_torrent(
     path: &Path,
     target_dir: &Path,
@@ -205,26 +230,7 @@ fn process_torrent(
             path_to_pieces.entry(&slice.path).or_default().push(piece);
         }
     }
-    // TODO: This doesn't prevent duplicate assignments, which is probably not desirable.
-    let candidates = candidates
-        .into_iter()
-        .map(|(path, candidates)| {
-            let candidate = candidates
-                .iter()
-                .map(|candidate| {
-                    let common_suffix = candidate
-                        .iter()
-                        .rev()
-                        .zip(path.iter().rev())
-                        .take_while(|(x, y)| x == y)
-                        .count();
-                    (common_suffix, candidate)
-                })
-                .max()
-                .unwrap();
-            (path, candidate.1)
-        })
-        .collect::<HashMap<_, _>>();
+    let candidates = pick_candidates(candidates);
     // Sample a (configurable) number of pieces to file as a quick correctness check.
     let pieces = path_to_pieces
         .iter_mut()
