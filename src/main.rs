@@ -236,7 +236,7 @@ fn process_torrent(
         .iter_mut()
         .flat_map(|(_path, pieces)| {
             let piece_count = std::cmp::min(pieces_to_test, pieces.len());
-            pieces.shuffle(&mut rand::thread_rng());
+            pieces.shuffle(&mut rand::rng());
             &pieces[..piece_count]
         })
         .collect::<HashSet<_>>();
