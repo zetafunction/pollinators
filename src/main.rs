@@ -248,7 +248,7 @@ fn process_torrent(
         }
     }
     if !failed_paths.is_empty() {
-        bail!("hash check failed for paths: {failed_paths:?}");
+        bail!("hash check failed for paths: {failed_paths:?}\n\ncandidates: {candidates:?}");
     }
 
     torrent.cross_seed(dry_run, path, target_dir, &candidates)
