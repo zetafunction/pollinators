@@ -202,15 +202,13 @@ fn pick_candidates<'a>(
                         .zip(path.iter().rev())
                         .take_while(|(x, y)| x == y)
                         .count();
-                    let common_prefix = largest_file_candidate_path
-                        .map(|path| {
-                            candidate
-                                .iter()
-                                .zip(path.iter())
-                                .take_while(|(x, y)| x == y)
-                                .count()
-                        })
-                        .unwrap_or(0);
+                    let common_prefix = largest_file_candidate_path.map_or(0, |path| {
+                        candidate
+                            .iter()
+                            .zip(path.iter())
+                            .take_while(|(x, y)| x == y)
+                            .count()
+                    });
                     (common_prefix, common_suffix, candidate)
                 })
                 .max()

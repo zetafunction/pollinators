@@ -90,13 +90,13 @@ where
                 &"expected non-empty pieces",
             )),
             Some(chunk) => {
-                if chunk.0.len() != sha1_smol::DIGEST_LENGTH {
+                if chunk.0.len() == sha1_smol::DIGEST_LENGTH {
+                    Ok(chunks)
+                } else {
                     Err(serde::de::Error::invalid_length(
                         s.len(),
                         &"pieces should be a multiple of 16",
                     ))
-                } else {
-                    Ok(chunks)
                 }
             }
         }
@@ -159,7 +159,7 @@ where
                 });
                 if next >= file_remaining {
                     file_iter.next();
-                    file_remaining = file_iter.peek().map(|file| file.length).unwrap_or(0);
+                    file_remaining = file_iter.peek().map_or(0, |file| file.length);
                 } else {
                     file_remaining -= next;
                 }
