@@ -175,12 +175,24 @@ impl CrossSeed for torrent::Torrent {
 }
 
 fn pick_candidates<'a>(
-    candidates: HashMap<&'a PathBuf, &'a Vec<PathBuf>>,
+    candidates: HashMap<(&'a PathBuf, u64), &'a Vec<PathBuf>>,
 ) -> HashMap<&'a PathBuf, &'a PathBuf> {
+    // Heuristic: If the file with the largest size has a single unique match, prefer matches that
+    // share a common prefix.
+    let largest_file_candidate_path = candidates
+        .iter()
+        .max_by_key(|((_path, len), _candidates)| len)
+        .and_then(|(_, candidates)| {
+            if candidates.len() == 1 {
+                candidates.iter().next()
+            } else {
+                None
+            }
+        });
     // TODO: This doesn't prevent duplicate assignments, which is probably not desirable.
     candidates
         .into_iter()
-        .map(|(path, candidates)| {
+        .map(|((path, _len), candidates)| {
             let candidate = candidates
                 .iter()
                 .map(|candidate| {
@@ -190,11 +202,20 @@ fn pick_candidates<'a>(
                         .zip(path.iter().rev())
                         .take_while(|(x, y)| x == y)
                         .count();
-                    (common_suffix, candidate)
+                    let common_prefix = largest_file_candidate_path
+                        .map(|path| {
+                            candidate
+                                .iter()
+                                .zip(path.iter())
+                                .take_while(|(x, y)| x == y)
+                                .count()
+                        })
+                        .unwrap_or(0);
+                    (common_prefix, common_suffix, candidate)
                 })
                 .max()
                 .unwrap();
-            (path, candidate.1)
+            (path, candidate.2)
         })
         .collect()
 }
@@ -221,7 +242,7 @@ fn process_torrent(
                     file.length
                 );
             };
-            Ok((&file.path, entry))
+            Ok(((&file.path, file.length), entry))
         })
         .collect::<Result<HashMap<_, _>, _>>()?;
     let mut path_to_pieces = HashMap::<_, Vec<_>>::new();
