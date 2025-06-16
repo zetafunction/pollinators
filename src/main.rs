@@ -27,6 +27,10 @@ struct Args {
     #[arg(long)]
     dry_run: bool,
 
+    /// If true, skips adding the torrent to a client.
+    #[arg(long)]
+    skip_add: bool,
+
     /// How many pieces should be tested per file when checking for a match.
     #[arg(long, default_value_t = 3)]
     pieces_to_test: usize,
@@ -98,6 +102,7 @@ trait CrossSeed {
     fn cross_seed(
         &self,
         dry_run: bool,
+        skip_add: bool,
         path: &Path,
         target_dir: &Path,
         candidates: &HashMap<&Path, &Path>,
@@ -116,6 +121,7 @@ impl CrossSeed for torrent::Torrent {
     fn cross_seed(
         &self,
         dry_run: bool,
+        skip_add: bool,
         path: &Path,
         target_dir: &Path,
         candidates: &HashMap<&Path, &Path>,
@@ -156,7 +162,9 @@ impl CrossSeed for torrent::Torrent {
             }
             fs.symlink(target_path, &base_dir.join(source_path))?;
         }
-        client::new_instance(dry_run).add_torrent(path, &base_dir)?;
+        if !skip_add {
+            client::new_instance(dry_run).add_torrent(path, &base_dir)?;
+        }
 
         Ok(())
     }
@@ -245,6 +253,7 @@ fn process_torrent(
     entries: &HashMap<u64, Vec<PathBuf>>,
     pieces_to_test: usize,
     dry_run: bool,
+    skip_add: bool,
 ) -> Result<()> {
     let torrent: torrent::Torrent = serde_bencode::from_bytes(&std::fs::read(path)?)?;
     println!("processing {}", path.display());
@@ -291,7 +300,7 @@ fn process_torrent(
         bail!("hash check failed for paths: {failed_paths:?}\n\ncandidates: {candidates:?}");
     }
 
-    torrent.cross_seed(dry_run, path, target_dir, &candidates)
+    torrent.cross_seed(dry_run, skip_add, path, target_dir, &candidates)
 }
 
 fn main() -> Result<()> {
@@ -304,6 +313,7 @@ fn main() -> Result<()> {
             &entries,
             args.pieces_to_test,
             args.dry_run,
+            args.skip_add,
         ) {
             println!("{} {:?}", style("error:").red(), style(err).red());
         }
