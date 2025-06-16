@@ -64,16 +64,16 @@ fn enumerate_files_with_sizes<P: AsRef<Path>>(dirs: &[P]) -> HashMap<u64, Vec<Pa
 }
 
 trait CheckWithFileMapping {
-    fn check(&self, mapping: &HashMap<&PathBuf, &PathBuf>) -> Result<bool>;
+    fn check(&self, mapping: &HashMap<&Path, &Path>) -> Result<bool>;
 }
 
 impl CheckWithFileMapping for torrent::Piece {
-    fn check(&self, mapping: &HashMap<&PathBuf, &PathBuf>) -> Result<bool> {
+    fn check(&self, mapping: &HashMap<&Path, &Path>) -> Result<bool> {
         let mut sha1 = Sha1::new();
         for slice in &self.file_slices {
             let file = File::open(
                 mapping
-                    .get(&slice.path)
+                    .get::<Path>(slice.path.as_ref())
                     .ok_or_else(|| anyhow!("no mapping for {}", slice.path.display()))?,
             )?;
             let mut buffer = vec![0; slice.length.try_into()?];
@@ -100,7 +100,7 @@ trait CrossSeed {
         dry_run: bool,
         path: &Path,
         target_dir: &Path,
-        candidates: &HashMap<&PathBuf, &PathBuf>,
+        candidates: &HashMap<&Path, &Path>,
     ) -> Result<()>;
 }
 
@@ -118,7 +118,7 @@ impl CrossSeed for torrent::Torrent {
         dry_run: bool,
         path: &Path,
         target_dir: &Path,
-        candidates: &HashMap<&PathBuf, &PathBuf>,
+        candidates: &HashMap<&Path, &Path>,
     ) -> Result<()> {
         if self.info.is_single_file {
             let (source, target) = candidates.iter().next().unwrap();
@@ -182,9 +182,42 @@ impl PathHelper for Path {
     }
 }
 
+fn get_best_candidate<'a, P, Q>(
+    path: &'a Path,
+    candidates: &'a [P],
+    preferred_prefix: &Option<Q>,
+) -> Option<(&'a Path, &'a Path)>
+where
+    P: AsRef<Path> + Ord,
+    Q: AsRef<Path>,
+{
+    let candidate = candidates
+        .iter()
+        .map(|candidate| {
+            let common_suffix = candidate
+                .as_ref()
+                .iter()
+                .rev()
+                .zip(path.iter().rev())
+                .take_while(|(x, y)| x == y)
+                .count();
+            let common_prefix = preferred_prefix.as_ref().map_or(0, |path| {
+                candidate
+                    .as_ref()
+                    .iter()
+                    .zip(path.as_ref().iter())
+                    .take_while(|(x, y)| x == y)
+                    .count()
+            });
+            (common_suffix, common_prefix, candidate)
+        })
+        .max()?;
+    Some((path, candidate.2.as_ref()))
+}
+
 fn pick_candidates<'a>(
     candidates: HashMap<(&'a PathBuf, u64), &'a Vec<PathBuf>>,
-) -> HashMap<&'a PathBuf, &'a PathBuf> {
+) -> HashMap<&'a Path, &'a Path> {
     // Heuristic: If the file with the largest size has a single unique match, prefer matches that
     // share a common prefix.
     let largest_file_candidate_path = candidates
@@ -201,27 +234,7 @@ fn pick_candidates<'a>(
     candidates
         .into_iter()
         .map(|((path, _len), candidates)| {
-            let candidate = candidates
-                .iter()
-                .map(|candidate| {
-                    let common_suffix = candidate
-                        .iter()
-                        .rev()
-                        .zip(path.iter().rev())
-                        .take_while(|(x, y)| x == y)
-                        .count();
-                    let common_prefix = largest_file_candidate_path.map_or(0, |path| {
-                        candidate
-                            .iter()
-                            .zip(path.iter())
-                            .take_while(|(x, y)| x == y)
-                            .count()
-                    });
-                    (common_prefix, common_suffix, candidate)
-                })
-                .max()
-                .unwrap();
-            (path, candidate.2)
+            get_best_candidate(path, candidates, &largest_file_candidate_path).unwrap()
         })
         .collect()
 }
