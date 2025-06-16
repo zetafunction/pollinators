@@ -372,4 +372,113 @@ mod tests {
             Some("/".into()),
         );
     }
+
+    #[test]
+    fn get_best_candidate_single_option() {
+        assert_eq!(
+            get_best_candidate(Path::new("b/c"), &vec![Path::new("/a/b/c")], &None::<&Path>),
+            Some((Path::new("b/c"), Path::new("/a/b/c")))
+        );
+
+        // With only a single option, `preferred_prefix` should have no effect on the result.
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c")],
+                &Some(Path::new("/a2/b2/c2"))
+            ),
+            Some((Path::new("b/c"), Path::new("/a/b/c")))
+        );
+
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c")],
+                &Some(Path::new("/a/b/c"))
+            ),
+            Some((Path::new("b/c"), Path::new("/a/b/c")))
+        );
+    }
+
+    #[test]
+    fn get_best_candidate_preferred_prefix_disambiguates() {
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
+                &Some(Path::new("/a"))
+            ),
+            Some((Path::new("b/c"), Path::new("/a/b/c")))
+        );
+
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
+                &Some(Path::new("/a/b"))
+            ),
+            Some((Path::new("b/c"), Path::new("/a/b/c")))
+        );
+
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
+                &Some(Path::new("/a/b2"))
+            ),
+            Some((Path::new("b/c"), Path::new("/a/b/c")))
+        );
+    }
+
+    #[test]
+    fn get_best_candidate_preferred_prefix_matches_nothing() {
+        // The implementation takes the max tuple candidate; in this case, only the final path
+        // component of the tuple will differ, so the implementation will return the "max" path.
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
+                &Some(Path::new("/e"))
+            ),
+            Some((Path::new("b/c"), Path::new("/a2/b/c")))
+        );
+    }
+
+    #[test]
+    fn get_best_candidate_longest_shared_suffix_wins() {
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c"), Path::new("/a/b2/c")],
+                &None::<&Path>,
+            ),
+            Some((Path::new("b/c"), Path::new("/a/b/c")))
+        );
+    }
+
+    #[test]
+    fn get_best_candidate_shared_longest_shared_suffix() {
+        // The implementation takes the max tuple candidate; in this case, only the final path
+        // component of the tuple will differ, so the implementation will return the "max" path.
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
+                &None::<&Path>,
+            ),
+            Some((Path::new("b/c"), Path::new("/a2/b/c")))
+        );
+    }
+
+    #[test]
+    fn get_best_candidate_prefer_suffix_over_prefix() {
+        assert_eq!(
+            get_best_candidate(
+                Path::new("b/c"),
+                &vec![Path::new("/a/b/c"), Path::new("/a/b2/c")],
+                &Some(Path::new("/a/b2"))
+            ),
+            Some((Path::new("b/c"), Path::new("/a/b/c")))
+        );
+    }
 }
