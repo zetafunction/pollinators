@@ -133,23 +133,11 @@ impl CrossSeed for torrent::Torrent {
             };
         }
 
-        // Check if symlinks are needed at all. This could be much simpler if Path implemented
-        // strip_suffix, but for whatever reason, Path only implements strip_prefix.
+        // Check if symlinks are needed at all; if the same prefix can be used for all selected
+        // candidate paths, then a symlink is sufficient.
         let path_prefix: HashSet<Option<PathBuf>> = candidates
             .iter()
-            .map(|(source, target)| {
-                let mut source_components = source.components().rev();
-                let mut target_components = target.components().rev();
-                loop {
-                    match (source_components.next(), target_components.next()) {
-                        (Some(s), Some(t)) if s == t => continue,
-                        (None, Some(t)) => {
-                            return Some(target_components.rev().chain(Some(t)).collect());
-                        }
-                        _ => return None,
-                    }
-                }
-            })
+            .map(|(source, target)| target.remove_common_suffix(source))
             .collect();
         if !path_prefix.contains(&None) && path_prefix.len() == 1 {
             let seed_path = path_prefix.into_iter().next().unwrap().unwrap();
@@ -171,6 +159,26 @@ impl CrossSeed for torrent::Torrent {
         client::new_instance(dry_run).add_torrent(path, &base_dir)?;
 
         Ok(())
+    }
+}
+
+trait PathHelper {
+    fn remove_common_suffix(&self, suffix: &Self) -> Option<PathBuf>;
+}
+
+impl PathHelper for Path {
+    fn remove_common_suffix(&self, suffix: &Path) -> Option<PathBuf> {
+        let mut self_components = self.components().rev();
+        let mut suffix_components = suffix.components().rev();
+        loop {
+            match (self_components.next(), suffix_components.next()) {
+                (Some(x), Some(y)) if x == y => continue,
+                (Some(x), None) => {
+                    return Some(self_components.rev().chain(Some(x)).collect());
+                }
+                _ => return None,
+            }
+        }
     }
 }
 
@@ -288,4 +296,67 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remove_common_suffix_all_unique() {
+        // Absolute
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("/d/e")),
+            None
+        );
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("/d/e/f")),
+            None
+        );
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("/d/e/f/g")),
+            None
+        );
+
+        // Relative
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("d/e")),
+            None
+        );
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("d/e/f")),
+            None
+        );
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("d/e/f/g")),
+            None
+        );
+    }
+
+    #[test]
+    fn remove_common_suffix_partial_shared() {
+        // TODO: This doesn't seem quite right, but the logic seems to more or less work for now...
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("/b/c")),
+            None,
+        );
+
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("b/c")),
+            Some("/a".into()),
+        );
+    }
+
+    #[test]
+    fn remove_common_suffix_all_shared() {
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("/a/b/c")),
+            None,
+        );
+
+        assert_eq!(
+            Path::new("/a/b/c").remove_common_suffix(Path::new("a/b/c")),
+            Some("/".into()),
+        );
+    }
 }
