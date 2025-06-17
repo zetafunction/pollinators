@@ -147,7 +147,14 @@ impl CrossSeed for torrent::Torrent {
             .collect();
         if !path_prefix.contains(&None) && path_prefix.len() == 1 {
             let seed_path = path_prefix.into_iter().next().unwrap().unwrap();
-            client::new_instance(dry_run).add_torrent(path, &seed_path)?;
+            if !skip_add {
+                client::new_instance(dry_run).add_torrent(path, &seed_path)?;
+            } else {
+                println!(
+                    "torrent can be directly seeded from {}",
+                    seed_path.display()
+                );
+            }
             return Ok(());
         }
         let base_dir = self.base_dir(target_dir)?;
