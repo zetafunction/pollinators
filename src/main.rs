@@ -129,13 +129,29 @@ impl CrossSeed for torrent::Torrent {
         if self.info.is_single_file {
             let (source, target) = candidates.iter().next().unwrap();
             return if *source == target.file_name().unwrap() {
-                client::new_instance(dry_run).add_torrent(path, target.parent().unwrap())
+                println!(
+                    "torrent can be directly seeded from {}",
+                    target.parent().unwrap().display()
+                );
+                if !skip_add {
+                    client::new_instance(dry_run).add_torrent(path, target.parent().unwrap())?;
+                }
+                Ok(())
             } else {
                 let base_dir = self.base_dir(target_dir)?;
+                println!(
+                    "{} {}",
+                    style("found matches with different filenames; creating symlinks in").blue(),
+                    base_dir.display()
+                );
                 let fs = fs::new_instance(dry_run);
                 fs.create_dir_all(&base_dir)?;
                 fs.symlink(target, &base_dir.join(source))?;
-                client::new_instance(dry_run).add_torrent(path, &base_dir)
+                if !skip_add {
+                    client::new_instance(dry_run).add_torrent(path, &base_dir)
+                } else {
+                    Ok(())
+                }
             };
         }
 
@@ -147,20 +163,20 @@ impl CrossSeed for torrent::Torrent {
             .collect();
         if !path_prefix.contains(&None) && path_prefix.len() == 1 {
             let seed_path = path_prefix.into_iter().next().unwrap().unwrap();
+            println!(
+                "torrent can be directly seeded from {}",
+                seed_path.display()
+            );
             if !skip_add {
                 client::new_instance(dry_run).add_torrent(path, &seed_path)?;
-            } else {
-                println!(
-                    "torrent can be directly seeded from {}",
-                    seed_path.display()
-                );
             }
             return Ok(());
         }
         let base_dir = self.base_dir(target_dir)?;
         println!(
-            "{}",
-            style("found matches with different filenames; creating symlinks").blue()
+            "{} {}",
+            style("found matches with different filenames; creating symlinks in").blue(),
+            base_dir.display()
         );
         let fs = fs::new_instance(dry_run);
         for (source_path, target_path) in candidates {
