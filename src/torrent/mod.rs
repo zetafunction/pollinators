@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde_bytes::ByteBuf;
 use std::path::PathBuf;
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Digest([u8; sha1_smol::DIGEST_LENGTH]);
 
 impl Digest {
@@ -26,14 +26,14 @@ where
     Ok(path_pieces.iter().collect())
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FileSlice {
     pub path: PathBuf,
     pub offset: u64,
     pub length: u64,
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Piece {
     pub hash: Digest,
     pub file_slices: Vec<FileSlice>,

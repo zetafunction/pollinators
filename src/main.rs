@@ -6,8 +6,9 @@ mod util;
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 use console::style;
-use indicatif::ProgressIterator;
+use indicatif::ParallelProgressIterator;
 use rand::seq::SliceRandom;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sha1_smol::Sha1;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -296,29 +297,42 @@ fn process_torrent(
             Ok(((&file.path, file.length), entry))
         })
         .collect::<Result<HashMap<_, _>, _>>()?;
-    let mut path_to_pieces = HashMap::<_, Vec<_>>::new();
-    for piece in &torrent.info.pieces {
-        for slice in &piece.file_slices {
-            path_to_pieces.entry(&slice.path).or_default().push(piece);
-        }
-    }
     let candidates = pick_candidates(candidates);
-    // Sample a (configurable) number of pieces to file as a quick correctness check.
-    let pieces = path_to_pieces
-        .iter_mut()
-        .flat_map(|(_path, pieces)| {
-            let piece_count = std::cmp::min(pieces_to_test, pieces.len());
-            pieces.shuffle(&mut rand::rng());
-            &pieces[..piece_count]
-        })
-        .collect::<HashSet<_>>();
-    let mut failed_paths = HashSet::new();
-    let bar = util::new_bar(pieces.len() as u64).with_message("hashing...");
-    for piece in pieces.iter().progress_with(bar) {
-        if !piece.check(&candidates)? {
-            failed_paths.extend(piece.file_slices.iter().map(|slice| &slice.path));
+    let pieces = if dry_run || skip_add {
+        // Sample a number of pieces to file as a quick correctness check.
+        let mut path_to_pieces = HashMap::<_, Vec<_>>::new();
+        for piece in &torrent.info.pieces {
+            for slice in &piece.file_slices {
+                path_to_pieces.entry(&slice.path).or_default().push(piece);
+            }
         }
-    }
+        std::borrow::Cow::Owned(
+            path_to_pieces
+                .into_iter()
+                .flat_map(|(_path, mut pieces)| {
+                    let piece_count = std::cmp::min(pieces_to_test, pieces.len());
+                    pieces.shuffle(&mut rand::rng());
+                    pieces.truncate(piece_count);
+                    pieces
+                })
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        // Otherwise, do a full check: the hash checks are parallelized and can run faster than
+        // hash checks in many common torrent clients.
+        std::borrow::Cow::Borrowed(&torrent.info.pieces)
+    };
+    let bar = util::new_bar(torrent.info.pieces.len() as u64).with_message("hashing...");
+    let failed_paths: HashSet<_> = pieces
+        .par_iter()
+        .progress_with(bar)
+        // TODO: Probably want some sort of error handling here.
+        .filter(|piece| !piece.check(&candidates).unwrap())
+        .flat_map_iter(|piece| piece.file_slices.iter().map(|slice| &slice.path))
+        .collect();
     if !failed_paths.is_empty() {
         bail!("hash check failed for paths: {failed_paths:?}\n\ncandidates: {candidates:?}");
     }

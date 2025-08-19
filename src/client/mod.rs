@@ -14,8 +14,8 @@ impl Client for Synapse {
     fn add_torrent(&self, torrent_path: &Path, seed_path: &Path) -> Result<()> {
         let output = Command::new("sycli")
             .arg("add")
-            .arg("-P")
-            .arg("-d")
+            .arg("--import")
+            .arg("--directory")
             .arg(seed_path)
             .arg(torrent_path)
             .output()?;
