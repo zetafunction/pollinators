@@ -217,7 +217,7 @@ impl PathHelper for Path {
 fn get_best_candidate<'a, P, Q>(
     path: &'a Path,
     candidates: &'a [P],
-    preferred_prefix: &Option<Q>,
+    preferred_prefix: Option<&Q>,
 ) -> Option<(&'a Path, &'a Path)>
 where
     P: AsRef<Path> + Ord,
@@ -266,7 +266,7 @@ fn pick_candidates<'a>(
     candidates
         .into_iter()
         .map(|((path, _len), candidates)| {
-            get_best_candidate(path, candidates, &largest_file_candidate_path).unwrap()
+            get_best_candidate(path, candidates, largest_file_candidate_path.as_ref()).unwrap()
         })
         .collect()
 }
