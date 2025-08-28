@@ -221,7 +221,7 @@ fn get_best_candidate<'a, P, Q>(
 ) -> Option<(&'a Path, &'a Path)>
 where
     P: AsRef<Path> + Ord,
-    Q: AsRef<Path>,
+    Q: AsRef<Path> + ?Sized,
 {
     let candidate = candidates
         .iter()
@@ -423,7 +423,7 @@ mod tests {
     #[test]
     fn get_best_candidate_single_option() {
         assert_eq!(
-            get_best_candidate(Path::new("b/c"), &vec![Path::new("/a/b/c")], &None::<&Path>),
+            get_best_candidate(Path::new("b/c"), &vec![Path::new("/a/b/c")], None::<&Path>),
             Some((Path::new("b/c"), Path::new("/a/b/c")))
         );
 
@@ -432,7 +432,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c")],
-                &Some(Path::new("/a2/b2/c2"))
+                Some(&Path::new("/a2/b2/c2"))
             ),
             Some((Path::new("b/c"), Path::new("/a/b/c")))
         );
@@ -441,7 +441,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c")],
-                &Some(Path::new("/a/b/c"))
+                Some(&Path::new("/a/b/c"))
             ),
             Some((Path::new("b/c"), Path::new("/a/b/c")))
         );
@@ -453,7 +453,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
-                &Some(Path::new("/a"))
+                Some(&Path::new("/a"))
             ),
             Some((Path::new("b/c"), Path::new("/a/b/c")))
         );
@@ -462,7 +462,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
-                &Some(Path::new("/a/b"))
+                Some(&Path::new("/a/b"))
             ),
             Some((Path::new("b/c"), Path::new("/a/b/c")))
         );
@@ -471,7 +471,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
-                &Some(Path::new("/a/b2"))
+                Some(&Path::new("/a/b2"))
             ),
             Some((Path::new("b/c"), Path::new("/a/b/c")))
         );
@@ -485,7 +485,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
-                &Some(Path::new("/e"))
+                Some(&Path::new("/e"))
             ),
             Some((Path::new("b/c"), Path::new("/a2/b/c")))
         );
@@ -497,7 +497,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c"), Path::new("/a/b2/c")],
-                &None::<&Path>,
+                None::<&Path>,
             ),
             Some((Path::new("b/c"), Path::new("/a/b/c")))
         );
@@ -511,7 +511,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c"), Path::new("/a2/b/c")],
-                &None::<&Path>,
+                None::<&Path>,
             ),
             Some((Path::new("b/c"), Path::new("/a2/b/c")))
         );
@@ -523,7 +523,7 @@ mod tests {
             get_best_candidate(
                 Path::new("b/c"),
                 &vec![Path::new("/a/b/c"), Path::new("/a/b2/c")],
-                &Some(Path::new("/a/b2"))
+                Some(&Path::new("/a/b2"))
             ),
             Some((Path::new("b/c"), Path::new("/a/b/c")))
         );
