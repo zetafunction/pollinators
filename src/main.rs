@@ -10,7 +10,7 @@ use indicatif::ParallelProgressIterator;
 use rand::seq::SliceRandom;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sha1_smol::Sha1;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -334,7 +334,9 @@ fn process_torrent(
         .flat_map_iter(|piece| piece.file_slices.iter().map(|slice| &slice.path))
         .collect();
     if !failed_paths.is_empty() {
-        bail!("hash check failed for paths: {failed_paths:?}\n\ncandidates: {candidates:?}");
+        let failed_paths = failed_paths.into_iter().collect::<BTreeSet<_>>();
+        let candidates = candidates.into_iter().collect::<BTreeMap<_, _>>();
+        bail!("hash check failed for paths: {failed_paths:#?}\n\ncandidates: {candidates:#?}");
     }
 
     torrent.cross_seed(dry_run, skip_add, path, target_dir, &candidates)
