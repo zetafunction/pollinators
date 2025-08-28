@@ -17,3 +17,7 @@ serde_bytes = "0.11.15"
 sha1_smol = "1.0.1"
 url = "2.5.4"
 walkdir = "2.5.0"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
