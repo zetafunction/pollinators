@@ -325,7 +325,7 @@ fn process_torrent(
         // hash checks in many common torrent clients.
         std::borrow::Cow::Borrowed(&torrent.info.pieces)
     };
-    let bar = util::new_bar(torrent.info.pieces.len() as u64).with_message("hashing...");
+    let bar = util::new_bar(pieces.len() as u64).with_message("hashing...");
     let failed_paths: HashSet<_> = pieces
         .par_iter()
         .progress_with(bar)
